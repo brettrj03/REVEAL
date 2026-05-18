@@ -1,0 +1,10 @@
+LICENSE
+README.md
+pyproject.toml
+gene_insight_pipeline.egg-info/PKG-INFO
+gene_insight_pipeline.egg-info/SOURCES.txt
+gene_insight_pipeline.egg-info/dependency_links.txt
+gene_insight_pipeline.egg-info/requires.txt
+gene_insight_pipeline.egg-info/top_level.txt
+src/__init__.py
+src/config.py

@@ -1,0 +1,110 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.py[cod]
+*$py.class
+.Python
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
+.venv/
+venv/
+ENV/
+env/
+.pytest_cache/
+.coverage
+htmlcov/
+*.cover
+.hypothesis/
+
+# Database backups
+database/backup/
+
+# Results and logs (runtime-generated)
+results/
+pipeline_logs/
+
+# Benchmark data and outputs
+benchmarking/
+benchmarks/
+
+# Environment variables
+.env
+.env.local
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.project
+.pydevproject
+.settings/
+
+# Jupyter Notebook
+.ipynb_checkpoints/
+*.ipynb
+
+# Streamlit
+.streamlit/
+
+# mypy
+.mypy_cache/
+.dmypy.json
+dmypy.json
+
+# Backup files
+*copy.py
+*backup.py
+*.bak
+*.tmp
+
+# Large database files
+src/database/gene_database.sqlite
+src/database/data/
+src/database/data/*.gtf
+src/database/data/*.txt
+src/database/data/*.gaf
+*.sqlite
+
+# Log files
+*.log
+
+# Claude Code (local dev tool config — not needed in repo)
+CLAUDE.md
+.claude/
+
+# Temporary analysis scripts (one-off investigations)
+analyze_validation_failures.py
+extract_failures.py
+find_*.py
+run_all_benchmarks.sh
+string_confidence_softening_full_report.txt
+
+# One-off fix documentation (keep locally, not in repo)
+STRING_CONFIDENCE_SOFTENING_REPORT.md
+STRING_CONFIDENCE_VALIDATION_REPORT.md
+TOKEN_TRACKING_FIX_SUMMARY.md
+PYDANTIC_AI.md
+docs/ASYNCIO_SEMAPHORE_FIX.md
+docs/FINALSUMMARY_HANG_FIX.md
+docs/PYDANTIC_SERIALIZATION_FIXES.md
+
+# Rope refactoring tool
+.ropeproject/
+
+# Old development files
+old_files/
+results/
+src/database/gene_database.sqlite
+src/database/data/
+pipeline_logs/
