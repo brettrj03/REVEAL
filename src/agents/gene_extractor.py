@@ -243,7 +243,7 @@ Example isoform phrases to watch for:
 - "Expression of GENE1, GENE2, and GENE3"
   → MUST extract all 3 genes
 
-- "Analyzing TP53, BRCA1, MYC, UNKNOWNGENE"
+- "Analysing TP53, BRCA1, MYC, UNKNOWNGENE"
   → MUST extract all 4 genes, including UNKNOWNGENE even if you don't recognize it
 
 **Gene type inclusion:**

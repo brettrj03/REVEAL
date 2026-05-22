@@ -108,9 +108,9 @@ def create_reveal_graph():
     )
 
 
-# Lazy initialization to avoid forward reference issues at module import time
+# Lazy initialisation to avoid forward reference issues at module import time
 def get_reveal_graph():
-    """Get the default REVEAL pipeline graph instance (lazy initialization)"""
+    """Get the default REVEAL pipeline graph instance (lazy initialisation)"""
     global _reveal_graph
     try:
         return _reveal_graph

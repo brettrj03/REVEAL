@@ -30,7 +30,7 @@ def main():
     # Apply custom CSS styles
     apply_styles()
 
-    # Initialize session state
+    # Initialise session state
     if 'status' not in st.session_state:
         st.session_state['status'] = 'Ready'
     if 'pipeline_state' not in st.session_state:

@@ -47,7 +47,7 @@ class AnalyzeLiteratureFindings(BaseNode[GeneState]):
             from src.nodes.interpret_all_genes import InterpretAllGenes
     
             print(f"\n{'='*70}")
-            print("NODE: Analyze Literature Findings")
+            print("NODE: Analyse Literature Findings")
             print("Extracting research trends and themes from collected papers")
             print(f"{'='*70}")
     

@@ -927,7 +927,7 @@ Rules:
 9. Preserve the original tone and length as much as possible.
 10. Return only the rewritten text — no explanations, no JSON wrapper.
 
-=== EXAMPLE OF CORRECT BEHAVIOR ===
+=== EXAMPLE OF CORRECT BEHAVIOUR ===
 Original sentence: "Studies have linked GENE1 to cancer pathways and recent work shows promising results."
 Correction: Replace "Studies have linked GENE1 to cancer pathways" With "No studies directly link GENE1 to cancer pathways"
 Correct output: "No studies directly link GENE1 to cancer pathways and recent work shows promising results."

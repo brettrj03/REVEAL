@@ -63,7 +63,7 @@ class InterpretAllGenes(BaseNode[GeneState]):
                         node_name="InterpretAllGenes",
                     )
                 except Exception as exc:  # pragma: no cover - best effort
-                    print(f"⚠️  Summarizer failed for {gene_symbol}: {exc}")
+                    print(f"⚠️  Summariser failed for {gene_symbol}: {exc}")
                     import traceback
                     traceback.print_exc()
                     # Store error in state for debugging

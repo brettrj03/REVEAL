@@ -170,7 +170,7 @@ EXTRACTION RULES (READ CAREFULLY)
 
 2. PHENOTYPES — Observable symptoms, presentations, functional impairments
    ✓ Neurodevelopmental: "neurodevelopmental delay", "intellectual disability", "developmental delay", "cognitive impairment", "learning disability"
-   ✓ Behavioral: "autism spectrum disorder", "ASD", "ADHD", "behavioral abnormalities"
+   ✓ Behavioural: "autism spectrum disorder", "ASD", "ADHD", "behavioural abnormalities"
    ✓ Neurological: "epilepsy", "seizures", "hypotonia", "ataxia", "spasticity"
    ✓ Dysmorphic: "facial dysmorphism", "microcephaly", "macrocephaly"
    ✓ Functional: "hearing loss", "vision impairment", "feeding difficulties"

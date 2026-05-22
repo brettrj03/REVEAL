@@ -267,7 +267,7 @@ def get_confidence_label(score: int) -> str:
 
 def analyze_protein_network(gene_symbols: List[str], ensembl_mapping: Dict[str, Dict], db_path: str) -> Dict[str, Any]:
     """
-    Analyze protein interaction network for a list of genes
+    Analyse protein interaction network for a list of genes
     Returns comprehensive network analysis including:
     - Which genes have protein data
     - Direct interactions between query genes
@@ -606,7 +606,7 @@ def get_data_fetcher():
 
     Your job is to:
     1. Convert gene symbols to Ensembl IDs
-    2. Analyze the experiment context to determine which data is most relevant
+    2. Analyse the experiment context to determine which data is most relevant
     3. Selectively use tools based on the experiment type
     4. Collect comprehensive but focused data
 
@@ -846,7 +846,7 @@ def fetch_gene_data_deterministic(
             profiles.append(profile)
     print(f"   ✓ Gene information and functions")
 
-    # Analyze protein interaction network
+    # Analyse protein interaction network
     print(f"\n🧬 Fetching protein interaction network...")
     protein_network = analyze_protein_network(gene_list, mapping, db_path)
     print(f"   ✓ Protein interaction network analysis")

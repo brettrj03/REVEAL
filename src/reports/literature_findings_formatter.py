@@ -42,7 +42,7 @@ def format_literature_findings_section(
     recent = findings.get('recent_papers_count', 0)
     recent_years = findings.get('recent_years', 'recent')
 
-    sections.append(f"Total papers analyzed: {total:,}")
+    sections.append(f"Total papers analysed: {total:,}")
     sections.append(f"Recent publications ({recent_years}): {recent:,}")
 
     if total > 0:
@@ -203,7 +203,7 @@ def format_literature_findings_summary(
     total_recent = sum(f.get('recent_papers_count', 0) for f in all_findings.values())
     genes_with_data = sum(1 for f in all_findings.values() if f.get('total_papers', 0) > 0)
 
-    sections.append(f"\nGenes analyzed: {len(all_findings)}")
+    sections.append(f"\nGenes analysed: {len(all_findings)}")
     sections.append(f"Genes with literature: {genes_with_data}")
     sections.append(f"Total papers reviewed: {total_papers:,}")
     sections.append(f"Recent papers (last 2 years): {total_recent:,}")

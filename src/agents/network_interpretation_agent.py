@@ -95,7 +95,7 @@ async def generate_network_interpretation(
 
     lines: List[str] = []
     if context.genes:
-        lines.append(f"Genes analyzed: {', '.join(context.genes)}")
+        lines.append(f"Genes analysed: {', '.join(context.genes)}")
 
     if context.hub_proteins:
         lines.append("Top shared partners:")

@@ -136,14 +136,19 @@ PIPELINE_NODES = [
     ("PopulateReportMetadata", "📋 Organising report details..."),
     ("BuildLiteratureQueryPlan", "🗺️ Planning the literature search strategy..."),
     ("FetchAdaptiveLiterature", "📚 Searching scientific literature..."),
-    ("RankPapersByRelevance", "🧠 Prioritizing the most relevant papers..."),
-    ("AnalyzeLiteratureFindings", "📰 Summarizing literature insights..."),
+    ("RankPapersByRelevance", "🧠 Prioritising the most relevant papers..."),
+    ("AnalyzeLiteratureFindings", "📰 Summarising literature insights..."),
     ("InterpretAllGenes", "🤖 Interpreting each gene's role..."),
-    ("InterpretNetworkOverlap", "🔬 Interpreting network patterns..."),
-    ("InterpretGoPatterns", "🧪 Interpreting GO term overlaps..."),
-    ("GenerateCrossGeneSynthesis", "🌐 Connecting cross-gene insights..."),
-    ("GenerateGeneSummaries", "✨ Generating final gene summaries..."),
     ("ValidateInterpretations", "🔎 Validating AI interpretations..."),
+    ("InterpretNetworkOverlap", "🔬 Interpreting network patterns..."),
+    ("ValidateNetworkInterpretation", "🔎 Validating network interpretation..."),
+    ("InterpretGoPatterns", "🧪 Interpreting GO term overlaps..."),
+    ("ValidateGoInterpretation", "🔎 Validating GO term interpretation..."),
+    ("GenerateCrossGeneSynthesis", "🌐 Connecting cross-gene insights..."),
+    ("ValidateCrossGeneSynthesis", "🔎 Validating cross-gene synthesis..."),
+    ("ValidateLiteratureFindings", "🔎 Validating literature findings..."),
+    ("GenerateGeneSummaries", "✨ Generating final gene summaries..."),
+    ("ValidateGeneSummaries", "🔎 Validating gene summaries..."),
     ("FinalSummary", "🧾 Assembling the final report..."),
 ]
 
@@ -164,6 +169,11 @@ PIPELINE_NODE_ALIASES = {
     'generate_cross_gene_synthesis': 'GenerateCrossGeneSynthesis',
     'generate_gene_summaries': 'GenerateGeneSummaries',
     'final_summary': 'FinalSummary',
+    'validate_network_interpretation': 'ValidateNetworkInterpretation',
+    'validate_go_interpretation': 'ValidateGoInterpretation',
+    'validate_cross_gene_synthesis': 'ValidateCrossGeneSynthesis',
+    'validate_literature_findings': 'ValidateLiteratureFindings',
+    'validate_gene_summaries': 'ValidateGeneSummaries',
 }
 
 
@@ -211,11 +221,10 @@ def run_pipeline_with_progress(query: str, output_mode: str, progress_container,
 
     # Progress display elements
     with progress_container:
-        st.subheader("Analyzing Genes...")
+        st.subheader("Analysing Genes...")
         st.caption(f"Query: {query} | Mode: {output_mode}")
 
         extracted_genes_placeholder = st.empty()
-        progress_bar = st.progress(0)
         status_text = st.empty()
 
     last_node_count = 0
@@ -262,25 +271,33 @@ def run_pipeline_with_progress(query: str, output_mode: str, progress_container,
                     if len(nodes_executed) > last_node_count:
                         last_node_count = len(nodes_executed)
 
-                        # Update progress
-                        total_nodes = len(PIPELINE_NODES)
-                        progress = min(len(nodes_executed) / total_nodes, 0.99)
-                        progress_bar.progress(progress)
-
-                        # Current node status only
-                        current_node = nodes_executed[-1] if nodes_executed else "Initializing"
+                        # Show message for currently running node (one ahead of last completed)
+                        node_ids = [nid for nid, _ in PIPELINE_NODES]
+                        if nodes_executed:
+                            last_completed = nodes_executed[-1]
+                            # Resolve alias if needed
+                            canonical = PIPELINE_NODE_ALIASES.get(last_completed) or PIPELINE_NODE_ALIASES.get(str(last_completed).lower()) or last_completed
+                            if canonical in node_ids:
+                                next_index = node_ids.index(canonical) + 1
+                                if next_index < len(node_ids):
+                                    current_node = node_ids[next_index]
+                                else:
+                                    current_node = canonical  # last node just finished
+                            else:
+                                current_node = canonical
+                        else:
+                            current_node = node_ids[0] if node_ids else "Initialising"
                         status_message = get_node_status_message(current_node)
                         status_text.info(status_message)
 
         except (json.JSONDecodeError, FileNotFoundError):
             # State file not ready yet
-            status_text.info("Initializing pipeline...")
+            status_text.info("Initialising pipeline...")
 
     # Wait for thread to complete
     thread.join()
 
     # Final update
-    progress_bar.progress(1.0)
     status_text.success("✨ Analysis complete! Loading detailed results...")
     time.sleep(1)
 

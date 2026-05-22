@@ -854,7 +854,7 @@ def render_ai_gene_summary(state: Dict[str, Any], selected_gene: str, interpreta
             was_refined = True
 
     if gene_summary_text and source == "comprehensive":
-        caption_parts = ["*AI-synthesized overview combining function, expression, interactions, and literature*"]
+        caption_parts = ["*AI-synthesised overview combining function, expression, interactions, and literature*"]
         if was_refined:
             caption_parts.append(" ✓ Validator refined")
         st.caption("".join(caption_parts))
@@ -1649,7 +1649,7 @@ def render_ai_gene_summary(state: Dict[str, Any], selected_gene: str, interpreta
             was_refined = True
 
     if gene_summary_text and source == "comprehensive":
-        caption_parts = ["*AI-synthesized overview combining function, expression, interactions, and literature*"]
+        caption_parts = ["*AI-synthesised overview combining function, expression, interactions, and literature*"]
         if was_refined:
             caption_parts.append(" ✓ Validator refined")
         st.caption("".join(caption_parts))

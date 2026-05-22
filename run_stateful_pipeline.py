@@ -49,7 +49,7 @@ async def main():
         print("Usage: python run_stateful_pipeline.py \"YOUR QUERY\" [OPTIONS]")
         print("\nExamples:")
         print('  python run_stateful_pipeline.py "What does TP53 do?"')
-        print('  python run_stateful_pipeline.py "Analyze BRCA1, BRCA2, PALB2" --factual-only')
+        print('  python run_stateful_pipeline.py "Analyse BRCA1, BRCA2, PALB2" --factual-only')
         print('  python run_stateful_pipeline.py "Endothelial markers" --no-persist')
         print('  python run_stateful_pipeline.py "BRCA1" --resume')
         print('  python run_stateful_pipeline.py "BRCA1" --resume --resume-from InterpretAllGenes')

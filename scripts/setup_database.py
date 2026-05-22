@@ -1098,13 +1098,13 @@ Examples:
         load_string_interactions(conn, args.data_dir)
         load_string_aliases(conn, args.data_dir)
 
-        # Optimize
-        print_header("Optimizing")
+        # Optimise
+        print_header("Optimising")
         print_step("Running ANALYZE...")
         conn.execute("ANALYZE")
         print_step("Running VACUUM...")
         conn.execute("VACUUM")
-        print_step("Optimization complete", "ok")
+        print_step("Optimisation complete", "ok")
 
         # Verify
         success = verify_database(conn)
