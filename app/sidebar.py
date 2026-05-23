@@ -16,6 +16,7 @@ from pydantic import BaseModel
 
 from src.graph.gene_graph import run_stateful_pipeline
 from src.models.models import ExperimentContext
+from app.components.shared import check_openai_api_key
 
 
 def load_state_file(file_path: str) -> Optional[Dict[str, Any]]:
@@ -365,17 +366,42 @@ def render_sidebar():
             label_visibility="collapsed",
         )
 
-        # Run button
-        if st.button("Run Analysis", type="primary", width='stretch'):
-            if query:
+        # Run button - always clickable (only disabled when already running)
+        button_clicked = st.button("Run Analysis", type="primary", width='stretch', disabled=is_running)
+
+        if button_clicked:
+            # Check if query is provided
+            if not query:
+                st.warning("⚠️ Please enter a query before running analysis")
+            # For interpreted mode, check API key
+            elif output_mode == "interpreted":
+                api_key_check = check_openai_api_key()
+                if not api_key_check["has_key"]:
+                    # Show clear error message about missing API key
+                    st.error(
+                        "⚠️ **OpenAI API key required**\n\n"
+                        "Interpreted mode requires an OpenAI API key. "
+                        "Please add your API key to the .env file:\n\n"
+                        "```\nOPENAI_API_KEY=sk-your-actual-key-here\n```\n\n"
+                        "Get your API key from: https://platform.openai.com/api-keys\n\n"
+                        "**After adding the key, restart Streamlit** (Ctrl+C, then run `streamlit run streamlit_app.py` again)."
+                    )
+                else:
+                    # API key is set - proceed with the run
+                    st.session_state['run_query'] = query
+                    st.session_state['run_mode'] = output_mode
+                    st.session_state['run_model'] = st.session_state.get("selected_model", "gpt-4.1-mini")
+                    st.session_state['status'] = 'Running'
+                    st.session_state['running'] = True
+                    st.rerun()
+            else:
+                # Factual mode - no API key required, proceed directly
                 st.session_state['run_query'] = query
                 st.session_state['run_mode'] = output_mode
                 st.session_state['run_model'] = st.session_state.get("selected_model", "gpt-4.1-mini")
                 st.session_state['status'] = 'Running'
                 st.session_state['running'] = True
                 st.rerun()
-            else:
-                st.warning("Please enter a query")
 
         st.markdown("---")
 

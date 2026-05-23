@@ -3,9 +3,14 @@ Shared UI components for REVEAL.
 """
 
 import streamlit as st
+import os
 from typing import Any
 
 from src.integrations.pubmed_client import check_ncbi_credentials
+from src.utils.env import load_project_env
+
+# Ensure .env is loaded
+load_project_env()
 
 
 def get_source_text(data_with_provenance: Any, default_source: str = "Database") -> str:
@@ -74,4 +79,50 @@ def render_ncbi_credentials_warning():
             "Please update your .env file with your real email address. "
             "If you don't have an NCBI API key, remove or comment out the "
             "NCBI_API_KEY line — don't leave it blank."
+        )
+
+
+def check_openai_api_key():
+    """Check if OpenAI API key is properly configured.
+
+    Returns:
+        dict with keys:
+        - has_key: bool - True if API key is configured
+        - warning_message: str - Warning message if key is missing or empty
+    """
+    api_key = os.getenv("OPENAI_API_KEY", "")
+
+    # Check if API key is set but empty
+    key_set_but_empty = "OPENAI_API_KEY" in os.environ and not os.environ["OPENAI_API_KEY"].strip()
+
+    # Check if API key is missing entirely
+    key_missing = not api_key or not api_key.strip()
+
+    warning_message = ""
+    if key_set_but_empty:
+        warning_message = (
+            "OPENAI_API_KEY is set but empty. "
+            "Please add your OpenAI API key to the .env file."
+        )
+    elif key_missing:
+        warning_message = (
+            "OPENAI_API_KEY is not set. "
+            "Please add your OpenAI API key to the .env file."
+        )
+
+    return {
+        "has_key": bool(api_key and api_key.strip()),
+        "warning_message": warning_message
+    }
+
+
+def render_openai_api_key_warning():
+    """Display a warning banner if OpenAI API key is not configured."""
+    key_check = check_openai_api_key()
+    if key_check["warning_message"]:
+        st.warning(
+            "⚠️ " + key_check["warning_message"] + " "
+            "Get your API key from https://platform.openai.com/api-keys and add it to your .env file as: "
+            "OPENAI_API_KEY=sk-your-actual-key-here. "
+            "After adding the key, restart Streamlit (Ctrl+C, then run `streamlit run streamlit_app.py` again)."
         )
