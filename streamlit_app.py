@@ -5,6 +5,13 @@ REVEAL: Retrieval and Evidence-based Validated Interpretation Analysis for gene 
 A researcher-friendly interface for exploring gene annotation results.
 """
 
+import warnings
+
+# Suppress pydantic_graph library-level serialisation warnings (library issue, not application code)
+warnings.filterwarnings("ignore", message=".*Expected.*NodeSnapshot.*", category=UserWarning)
+warnings.filterwarnings("ignore", message=".*Expected.*none.*", category=UserWarning)
+warnings.filterwarnings("ignore", message=".*PydanticSerializationUnexpectedValue.*", category=UserWarning)
+
 import streamlit as st
 
 # Page config (must be first Streamlit command)

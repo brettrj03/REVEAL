@@ -9,13 +9,13 @@ Enhanced to avoid acronym collisions by using:
 """
 
 from dataclasses import dataclass
+from pydantic import BaseModel
 from typing import List, Dict, Optional, Tuple
 import os
 import sqlite3
 
 
-@dataclass
-class QueryTier:
+class QueryTier(BaseModel):
     """Represents one tier in the fallback strategy"""
     tier_number: int
     name: str

@@ -12,6 +12,10 @@ import sys
 import time
 import warnings
 
+# Suppress pydantic_graph library-level serialisation warnings (not fixable in application code)
+warnings.filterwarnings("ignore", message=".*Expected.*NodeSnapshot.*", category=UserWarning)
+warnings.filterwarnings("ignore", message=".*Expected.*none.*", category=UserWarning)
+
 # Apply Python 3.13+ compatibility patch before importing pydantic_graph
 # This handles stricter forward reference evaluation in Python 3.13+
 if sys.version_info >= (3, 13):
@@ -268,8 +272,7 @@ async def run_stateful_pipeline(
     graph = get_reveal_graph()
 
     _pipeline_start = time.perf_counter()
-    # Suppress Pydantic serialisation warnings from pydantic_graph's internal SafeFileStatePersistence
-    # These warnings occur when serializing EndSnapshot with NodeSnapshot schema (library issue, not our code)
+    # Suppress PydanticSerializationUnexpectedValue warnings from pydantic_graph's internal SafeFileStatePersistence
     with warnings.catch_warnings():
         warnings.filterwarnings(
             "ignore",

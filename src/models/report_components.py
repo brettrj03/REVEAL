@@ -523,12 +523,11 @@ class ReportMetadata(BaseModel):
         return "\n".join(lines)
 
 
-@dataclass
-class BiologicalSynthesis:
+class BiologicalSynthesis(BaseModel):
     """Cross-gene synthesis"""
     executive_summary: str
     cross_gene_insights: Optional[str] = None
-    key_findings: List[str] = field(default_factory=list)
+    key_findings: List[str] = PydanticField(default_factory=list)
 
     @staticmethod
     def _clean_text(text: Optional[str]) -> str:
