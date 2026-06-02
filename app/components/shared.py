@@ -5,6 +5,7 @@ Shared UI components for REVEAL.
 import streamlit as st
 import os
 from typing import Any
+from openai import OpenAI
 
 from src.integrations.pubmed_client import check_ncbi_credentials
 from src.utils.env import load_project_env
@@ -98,6 +99,15 @@ def check_openai_api_key():
     # Check if API key is missing entirely
     key_missing = not api_key or not api_key.strip()
 
+    # Check if API key is a placeholder value
+    is_placeholder = False
+    if api_key and api_key.strip():
+        key_lower = api_key.lower()
+        is_placeholder = (
+            key_lower.startswith('sk-your') or
+            key_lower == 'sk-your-openai-api-key-here'
+        )
+
     warning_message = ""
     if key_set_but_empty:
         warning_message = (
@@ -109,11 +119,56 @@ def check_openai_api_key():
             "OPENAI_API_KEY is not set. "
             "Please add your OpenAI API key to the .env file."
         )
+    elif is_placeholder:
+        warning_message = (
+            "OPENAI_API_KEY is still set to the placeholder value. "
+            "Please replace it with your real OpenAI API key."
+        )
 
     return {
-        "has_key": bool(api_key and api_key.strip()),
+        "has_key": bool(api_key and api_key.strip() and not is_placeholder),
         "warning_message": warning_message
     }
+
+
+def validate_openai_api_key():
+    """Test the OpenAI API key with a real API call.
+
+    Returns:
+        dict with keys:
+        - valid: bool - True if the API key works
+        - error: str or None - Error message if validation failed
+    """
+    api_key = os.getenv("OPENAI_API_KEY", "")
+
+    if not api_key or not api_key.strip():
+        return {
+            "valid": False,
+            "error": "No API key configured."
+        }
+
+    try:
+        # Make a lightweight test call with short timeout
+        client = OpenAI(api_key=api_key, timeout=5.0)
+        client.models.list()
+        return {
+            "valid": True,
+            "error": None
+        }
+    except Exception as e:
+        # Check for authentication errors (401)
+        error_str = str(e).lower()
+        if "401" in error_str or "unauthorized" in error_str or "invalid" in error_str:
+            return {
+                "valid": False,
+                "error": "OpenAI API key is invalid or has been revoked."
+            }
+        else:
+            # Other errors (network, timeout, etc.)
+            return {
+                "valid": False,
+                "error": f"Could not verify OpenAI API key: {str(e)}"
+            }
 
 
 def render_openai_api_key_warning():
