@@ -74,7 +74,7 @@ class ExtractGenesStateful(BaseNode[GeneState]):
             # STAGE 2: Database Resolution
             # ================================================================
             print("\n  Stage 2: Database Resolution...")
-            resolved_genes, unresolved = resolve_all_gene_identifiers(
+            resolved_genes, unresolved = await resolve_all_gene_identifiers(
                 result, ctx.state.db_path
             )
 

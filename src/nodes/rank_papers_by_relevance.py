@@ -271,15 +271,6 @@ def _print_ranking_transparency_table(
     print(f"  Papers from Tier 1/2 (high specificity): {high_specificity}")
     print(f"  Papers from Tier 3/4/5/6 (broad fallback): {broad_fallback}")
 
-    # Benchmark paper detection
-    if benchmark_detected:
-        print()
-        print("  *** BENCHMARK PAPER DETECTED ***")
-        print(f"  {benchmark_detected['label']}")
-        print(f"  LLM rank: #{benchmark_detected['llm_rank']}  |  BM25 rank: #{benchmark_detected['bm25_rank']}  |  Tier: {benchmark_detected['tier']}  |  Stars: {benchmark_detected['stars']}")
-    else:
-        print(f"  Benchmark paper detected: NO")
-
     print()
 
 

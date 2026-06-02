@@ -11,6 +11,7 @@ from src.utils.provenance import ProvenanceTracker
 from src.models.report_components import GeneProfile, clean_gene_name
 import sqlite3
 import time
+import asyncio
 
 if TYPE_CHECKING:
     from src.nodes.analyze_network_overlap import AnalyzeNetworkOverlap
@@ -220,12 +221,12 @@ def _lookup_by_description(cursor, description: str) -> Dict[str, Any]:
 # MAIN RESOLUTION FUNCTION
 # ============================================================================
 
-def resolve_all_gene_identifiers(
+async def resolve_all_gene_identifiers(
     extraction_result: "GeneExtractionResult",
     db_path: str
 ) -> Tuple[List[ResolvedGene], List[UnresolvedIdentifier]]:
     """
-    Resolve all gene identifiers from extraction to database records.
+    Resolve all gene identifiers from extraction to database records (parallelized).
 
     Resolution order:
     1. Ensembl IDs → Direct lookup (highest confidence)
@@ -242,111 +243,129 @@ def resolve_all_gene_identifiers(
         - resolved_genes: List of ResolvedGene objects (deduplicated by ensembl_id)
         - unresolved_identifiers: List of UnresolvedIdentifier objects
     """
-    conn = sqlite3.connect(db_path)
-    conn.row_factory = sqlite3.Row
-    cursor = conn.cursor()
 
+    @dataclass
+    class LookupTask:
+        """Represents a single identifier lookup task."""
+        identifier: str
+        identifier_type: str  # 'ensembl_id', 'symbol', 'alias', 'full_name'
+
+    async def resolve_single_identifier(task: LookupTask) -> Tuple[str, str, Dict[str, Any]]:
+        """
+        Resolve a single identifier using its own database connection.
+
+        Returns:
+            Tuple of (identifier, identifier_type, lookup_result)
+        """
+        # Create dedicated connection for this task (thread safety)
+        conn = sqlite3.connect(db_path)
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+
+        try:
+            # Perform lookup based on identifier type
+            if task.identifier_type == 'ensembl_id':
+                result = _lookup_by_ensembl_id(cursor, task.identifier)
+                if not result['found']:
+                    result['reason'] = 'Ensembl ID not found in genes table'
+                return (task.identifier, task.identifier_type, result)
+
+            elif task.identifier_type == 'symbol':
+                # Try direct match first
+                result = _lookup_by_direct_symbol(cursor, task.identifier)
+                if result['found']:
+                    return (task.identifier, task.identifier_type, result)
+
+                # Try alias match as fallback
+                result = _lookup_by_alias(cursor, task.identifier)
+                if not result['found']:
+                    result['reason'] = 'Symbol not found in genes or gene_alias tables'
+                return (task.identifier, task.identifier_type, result)
+
+            elif task.identifier_type == 'alias':
+                # Try alias table first
+                result = _lookup_by_alias(cursor, task.identifier)
+                if result['found']:
+                    return (task.identifier, task.identifier_type, result)
+
+                # Try direct symbol as fallback
+                result = _lookup_by_direct_symbol(cursor, task.identifier)
+                if not result['found']:
+                    result['reason'] = 'Alias not found in gene_alias or genes tables'
+                return (task.identifier, task.identifier_type, result)
+
+            elif task.identifier_type == 'full_name':
+                result = _lookup_by_description(cursor, task.identifier)
+                if not result['found']:
+                    result['reason'] = 'Full name not found in gene_function descriptions'
+                return (task.identifier, task.identifier_type, result)
+
+            else:
+                return (task.identifier, task.identifier_type, {
+                    'found': False,
+                    'reason': f'Unknown identifier type: {task.identifier_type}'
+                })
+
+        finally:
+            conn.close()
+
+    # Collect all identifiers into tasks
+    tasks: List[LookupTask] = []
+    seen_identifiers: set = set()
+
+    # Phase 1: Ensembl IDs
+    for ensembl_id in extraction_result.gene_ensembl_ids:
+        if ensembl_id and ensembl_id.upper() not in seen_identifiers:
+            seen_identifiers.add(ensembl_id.upper())
+            tasks.append(LookupTask(ensembl_id, 'ensembl_id'))
+
+    # Phase 2: Gene symbols
+    for symbol in extraction_result.gene_symbols:
+        if symbol and symbol.upper() not in seen_identifiers:
+            seen_identifiers.add(symbol.upper())
+            tasks.append(LookupTask(symbol, 'symbol'))
+
+    # Phase 3: Aliases
+    for alias in extraction_result.gene_aliases:
+        if alias and alias.upper() not in seen_identifiers:
+            seen_identifiers.add(alias.upper())
+            tasks.append(LookupTask(alias, 'alias'))
+
+    # Phase 4: Full names
+    for full_name in extraction_result.gene_full_names:
+        if full_name and full_name.upper() not in seen_identifiers:
+            seen_identifiers.add(full_name.upper())
+            tasks.append(LookupTask(full_name, 'full_name'))
+
+    # Run all lookups concurrently
+    results = await asyncio.gather(*[resolve_single_identifier(task) for task in tasks])
+
+    # Process results - deduplicate by ensembl_id
     resolved: Dict[str, ResolvedGene] = {}  # keyed by ensembl_id for deduplication
     unresolved: List[UnresolvedIdentifier] = []
-    seen_identifiers: set = set()  # Track processed identifiers (case-insensitive)
 
-    def add_resolved(result: Dict, identifier: str, id_type: str):
-        """Helper to add a resolved gene, handling deduplication."""
-        ensembl_id = result['ensembl_id']
-        if ensembl_id not in resolved:
-            resolved[ensembl_id] = ResolvedGene(
-                ensembl_id=ensembl_id,
-                official_symbol=result['official_symbol'],
-                original_identifier=identifier,
-                identifier_type=id_type,
-                lookup_tier=result['lookup_tier']
-            )
-            print(f"    ✓ Resolved: {identifier} → {result['official_symbol']} (via {result['lookup_tier']})")
-        else:
-            # Already resolved by a previous identifier
-            print(f"    ↪ Duplicate: {identifier} → {resolved[ensembl_id].official_symbol} (already resolved)")
-
-    # Phase 1: Ensembl IDs (highest confidence, direct lookup)
-    for ensembl_id in extraction_result.gene_ensembl_ids:
-        if not ensembl_id or ensembl_id.upper() in seen_identifiers:
-            continue
-        seen_identifiers.add(ensembl_id.upper())
-
-        result = _lookup_by_ensembl_id(cursor, ensembl_id)
-        if result['found']:
-            add_resolved(result, ensembl_id, 'ensembl_id')
+    for identifier, identifier_type, lookup_result in results:
+        if lookup_result['found']:
+            ensembl_id = lookup_result['ensembl_id']
+            if ensembl_id not in resolved:
+                resolved[ensembl_id] = ResolvedGene(
+                    ensembl_id=ensembl_id,
+                    official_symbol=lookup_result['official_symbol'],
+                    original_identifier=identifier,
+                    identifier_type=identifier_type,
+                    lookup_tier=lookup_result['lookup_tier']
+                )
+                print(f"    ✓ Resolved: {identifier} → {lookup_result['official_symbol']} (via {lookup_result['lookup_tier']})")
+            else:
+                # Already resolved by a previous identifier
+                print(f"    ↪ Duplicate: {identifier} → {resolved[ensembl_id].official_symbol} (already resolved)")
         else:
             unresolved.append(UnresolvedIdentifier(
-                identifier=ensembl_id,
-                identifier_type='ensembl_id',
-                reason='Ensembl ID not found in genes table'
+                identifier=identifier,
+                identifier_type=identifier_type,
+                reason=lookup_result.get('reason', 'Unknown reason')
             ))
-            print(f"    ✗ Unresolved: {ensembl_id} (Ensembl ID not found)")
-
-    # Phase 2: Gene symbols (try direct, then alias)
-    for symbol in extraction_result.gene_symbols:
-        if not symbol or symbol.upper() in seen_identifiers:
-            continue
-        seen_identifiers.add(symbol.upper())
-
-        result = _lookup_by_direct_symbol(cursor, symbol)
-        if result['found']:
-            add_resolved(result, symbol, 'symbol')
-            continue
-
-        result = _lookup_by_alias(cursor, symbol)
-        if result['found']:
-            add_resolved(result, symbol, 'symbol')
-            continue
-
-        unresolved.append(UnresolvedIdentifier(
-            identifier=symbol,
-            identifier_type='symbol',
-            reason='Symbol not found in genes or gene_alias tables'
-        ))
-        print(f"    ✗ Unresolved: {symbol} (symbol not found)")
-
-    # Phase 3: Aliases (alias table, then symbol table)
-    for alias in extraction_result.gene_aliases:
-        if not alias or alias.upper() in seen_identifiers:
-            continue
-        seen_identifiers.add(alias.upper())
-
-        result = _lookup_by_alias(cursor, alias)
-        if result['found']:
-            add_resolved(result, alias, 'alias')
-            continue
-
-        result = _lookup_by_direct_symbol(cursor, alias)
-        if result['found']:
-            add_resolved(result, alias, 'alias')
-            continue
-
-        unresolved.append(UnresolvedIdentifier(
-            identifier=alias,
-            identifier_type='alias',
-            reason='Alias not found in gene_alias or genes tables'
-        ))
-        print(f"    ✗ Unresolved: {alias} (alias not found)")
-
-    # Phase 4: Full names (description partial match - lowest confidence)
-    for full_name in extraction_result.gene_full_names:
-        if not full_name or full_name.upper() in seen_identifiers:
-            continue
-        seen_identifiers.add(full_name.upper())
-
-        result = _lookup_by_description(cursor, full_name)
-        if result['found']:
-            add_resolved(result, full_name, 'full_name')
-        else:
-            unresolved.append(UnresolvedIdentifier(
-                identifier=full_name,
-                identifier_type='full_name',
-                reason='Full name not found in gene_function descriptions'
-            ))
-            print(f"    ✗ Unresolved: {full_name} (full name not found)")
-
-    conn.close()
+            print(f"    ✗ Unresolved: {identifier} ({lookup_result.get('reason', 'Unknown reason')})")
 
     return list(resolved.values()), unresolved
 
@@ -395,7 +414,7 @@ class FetchAllGeneData(BaseNode[GeneState]):
     async def run(
         self,
         ctx: GraphRunContext[GeneState]
-    ) -> FetchAllGeneData | AnalyzeNetworkOverlap:
+    ) -> AnalyzeNetworkOverlap:
         from src.nodes.analyze_network_overlap import AnalyzeNetworkOverlap
 
         print(f"\n{'='*70}")
@@ -408,145 +427,137 @@ class FetchAllGeneData(BaseNode[GeneState]):
             ctx.state.log_node_execution('fetch_gene_data')
             return AnalyzeNetworkOverlap()
 
-        # Pop next gene from queue
-        gene = ctx.state.genes_to_process.pop(0)
-        ctx.state.current_gene = gene
-
-        print(f"Processing: {gene}")
-        print(f"Remaining in queue: {ctx.state.genes_to_process}")
+        # Take all genes from queue
+        genes_to_fetch = ctx.state.genes_to_process[:]
+        print(f"Processing {len(genes_to_fetch)} genes concurrently...")
 
         start_time = time.time()
 
-        try:
-            # Connect to database
-            conn = sqlite3.connect(ctx.state.db_path)
-            conn.row_factory = sqlite3.Row
+        async def fetch_single_gene(gene: str, db_path: str) -> Dict[str, Any] | None:
+            """
+            Fetch data for a single gene using its own database connection.
 
-            # Lookup gene in database
-            lookup_result = _lookup_gene_by_tiers(conn, gene)
+            Returns:
+                Dict containing gene data with 'official_symbol' key for matching,
+                or None if gene fetch failed.
+            """
+            try:
+                # Create dedicated connection for this task (thread safety)
+                conn = sqlite3.connect(db_path)
+                conn.row_factory = sqlite3.Row
 
-            if not lookup_result['found']:
-                print(f"⚠ Gene {gene} not found in database: {lookup_result.get('notes', 'Unknown reason')}")
-                # Store the lookup failure
-                ctx.state.gene_mapping[gene] = lookup_result
-                # Skip to next gene
-                conn.close()
-                return FetchAllGeneData()
+                # Lookup gene in database
+                lookup_result = _lookup_gene_by_tiers(conn, gene)
 
-            # Store lookup result
-            ctx.state.gene_mapping[gene] = lookup_result
-            ensembl_id = lookup_result['ensembl_id']
-            official_symbol = lookup_result['official_symbol']
+                if not lookup_result['found']:
+                    print(f"⚠ Gene {gene} not found in database: {lookup_result.get('notes', 'Unknown reason')}")
+                    conn.close()
+                    return {
+                        'gene': gene,
+                        'official_symbol': None,
+                        'lookup_result': lookup_result,
+                        'error': 'not_found'
+                    }
 
-            print(f"  Found: {gene} → {official_symbol} ({ensembl_id})")
+                ensembl_id = lookup_result['ensembl_id']
+                official_symbol = lookup_result['official_symbol']
 
-            # Fetch complete profile for this gene
-            raw_profile = fetch_complete_profile(ensembl_id, ctx.state.db_path)
+                print(f"  Found: {gene} → {official_symbol} ({ensembl_id})")
 
-            # Flatten the profile for easier access
-            profile = _flatten_profile(raw_profile)
+                # Fetch complete profile for this gene
+                raw_profile = fetch_complete_profile(ensembl_id, db_path)
 
-            # Ensure correct gene_id and symbol
-            if profile.get('gene_id') != ensembl_id:
-                profile['gene_id'] = ensembl_id
+                # Flatten the profile for easier access
+                profile = _flatten_profile(raw_profile)
 
-            if official_symbol and profile.get('symbol') != official_symbol:
-                profile['symbol'] = official_symbol
-            elif official_symbol and not profile.get('symbol'):
-                profile['symbol'] = official_symbol
+                # Ensure correct gene_id and symbol
+                if profile.get('gene_id') != ensembl_id:
+                    profile['gene_id'] = ensembl_id
 
-            # Normalize chromosome naming for downstream logic
-            if 'chromosome' not in profile and profile.get('chrom'):
-                profile['chromosome'] = profile['chrom']
+                if official_symbol and profile.get('symbol') != official_symbol:
+                    profile['symbol'] = official_symbol
+                elif official_symbol and not profile.get('symbol'):
+                    profile['symbol'] = official_symbol
 
-            # Track original query name (for alias handling)
-            profile['query_name'] = gene
+                # Normalize chromosome naming for downstream logic
+                if 'chromosome' not in profile and profile.get('chrom'):
+                    profile['chromosome'] = profile['chrom']
 
-            # Verify data completeness
-            _verify_profile_data(profile, gene)
+                # Track original query name (for alias handling)
+                profile['query_name'] = gene
 
-            # Add provenance tracking
-            provenance_tracker = ProvenanceTracker(ctx.state.db_path)
-            profile['provenance'] = []
+                # Verify data completeness
+                _verify_profile_data(profile, gene)
 
-            # Track core fields
-            core_fields = {
-                'chromosome': (('chromosome', 'chrom'), 'genes', 'chromosome'),
-                'start_position': (('start',), 'genes', 'start'),
-                'end_position': (('end',), 'genes', 'end'),
-                'strand': (('strand',), 'genes', 'strand'),
-                'gene_type': (('gene_type',), 'genes', 'gene_type'),
-                'source': (('source',), 'genes', 'data_source')
-            }
+                # Add provenance tracking
+                provenance_tracker = ProvenanceTracker(db_path)
+                profile['provenance'] = []
 
-            for field_name, (profile_keys, table, column_name) in core_fields.items():
-                if isinstance(profile_keys, str):
-                    profile_keys = (profile_keys,)
+                # Track core fields
+                core_fields = {
+                    'chromosome': (('chromosome', 'chrom'), 'genes', 'chromosome'),
+                    'start_position': (('start',), 'genes', 'start'),
+                    'end_position': (('end',), 'genes', 'end'),
+                    'strand': (('strand',), 'genes', 'strand'),
+                    'gene_type': (('gene_type',), 'genes', 'gene_type'),
+                    'source': (('source',), 'genes', 'data_source')
+                }
 
-                value = None
-                for key in profile_keys:
-                    if key in profile and profile[key] is not None:
-                        value = profile[key]
-                        break
+                for field_name, (profile_keys, table, column_name) in core_fields.items():
+                    if isinstance(profile_keys, str):
+                        profile_keys = (profile_keys,)
 
-                if value is None:
-                    continue
+                    value = None
+                    for key in profile_keys:
+                        if key in profile and profile[key] is not None:
+                            value = profile[key]
+                            break
 
-                prov = provenance_tracker.track_gene_field(
-                    gene_id=ensembl_id,
-                    field_name=field_name,
-                    value=value,
-                    table_name=table,
-                    column_name=column_name
-                )
-                profile['provenance'].append(prov)
+                    if value is None:
+                        continue
 
-            # Track function/description
-            if profile.get('description'):
-                prov = provenance_tracker.track_gene_field(
-                    gene_id=ensembl_id,
-                    field_name='function_description',
-                    value=profile['description'],
-                    table_name='gene_function',
-                    column_name='description'
-                )
-                profile['provenance'].append(prov)
+                    prov = provenance_tracker.track_gene_field(
+                        gene_id=ensembl_id,
+                        field_name=field_name,
+                        value=value,
+                        table_name=table,
+                        column_name=column_name
+                    )
+                    profile['provenance'].append(prov)
 
-            # Track GO terms
-            for go_term in profile.get('go_terms', []):
-                prov = provenance_tracker.track_go_term(ensembl_id, go_term)
-                if 'provenance' not in go_term:
-                    go_term['provenance'] = prov
+                # Track function/description
+                if profile.get('description'):
+                    prov = provenance_tracker.track_gene_field(
+                        gene_id=ensembl_id,
+                        field_name='function_description',
+                        value=profile['description'],
+                        table_name='gene_function',
+                        column_name='description'
+                    )
+                    profile['provenance'].append(prov)
 
-            # Track interactions
-            for interaction in profile.get('interactions', []):
-                prov = provenance_tracker.track_interaction(ensembl_id, interaction)
-                if 'provenance' not in interaction:
-                    interaction['provenance'] = prov
+                # Track GO terms
+                for go_term in profile.get('go_terms', []):
+                    prov = provenance_tracker.track_go_term(ensembl_id, go_term)
+                    if 'provenance' not in go_term:
+                        go_term['provenance'] = prov
 
-            # Store in working memory
-            ctx.state.current_gene_data = profile
+                # Track interactions
+                for interaction in profile.get('interactions', []):
+                    prov = provenance_tracker.track_interaction(ensembl_id, interaction)
+                    if 'provenance' not in interaction:
+                        interaction['provenance'] = prov
 
-            # Also add to accumulated data immediately using OFFICIAL SYMBOL as key
-            ctx.state.all_gene_data[official_symbol] = profile
+                # Track data source
+                go_domains = []
+                for term in profile.get('go_terms', []):
+                    domain = term.get('aspect') or term.get('namespace')
+                    if domain and domain not in go_domains:
+                        go_domains.append(domain)
 
-            # Track alias mapping if input differs from official symbol
-            if gene != official_symbol:
-                ctx.state.gene_alias_map[gene] = official_symbol
-
-            # Track data source
-            go_domains = []
-            for term in profile.get('go_terms', []):
-                domain = term.get('aspect') or term.get('namespace')
-                if domain and domain not in go_domains:
-                    go_domains.append(domain)
-
-            ctx.state.add_data_source(
-                gene=gene,
-                source_type='gene_profile',
-                source_info={
+                data_source_info = {
                     'ensembl_id': ensembl_id,
-                    'database': ctx.state.db_path,
+                    'database': db_path,
                     'table': 'genes',
                     'has_description': bool(profile.get('description')),
                     'has_function': bool(profile.get('description')),
@@ -555,120 +566,180 @@ class FetchAllGeneData(BaseNode[GeneState]):
                     'has_expression': len(profile.get('expression', [])) > 0,
                     'has_interactions': len(profile.get('interactions', [])) > 0
                 }
-            )
 
-            # ========================================================================
-            # CREATE GENEPROFILE (NEW)
-            # ========================================================================
-            # Extract GO terms by category (deduplicate by name, keep GO ID)
-            go_terms = profile.get('go_terms', [])
+                # Extract GO terms by category (deduplicate by name, keep GO ID)
+                go_terms = profile.get('go_terms', [])
 
-            # Helper function to deduplicate GO terms by name but keep first GO ID
-            def dedupe_go_terms(terms_list):
-                seen_names = {}
-                result = []
-                for term in terms_list:
-                    name = term['name']
-                    if name not in seen_names:
-                        seen_names[name] = True
-                        result.append(term)
-                return result
+                # Helper function to deduplicate GO terms by name but keep first GO ID
+                def dedupe_go_terms(terms_list):
+                    seen_names = {}
+                    result = []
+                    for term in terms_list:
+                        name = term['name']
+                        if name not in seen_names:
+                            seen_names[name] = True
+                            result.append(term)
+                    return result
 
-            # Extract molecular functions with GO IDs
-            mf_list = [
-                {'name': g.get('name', ''), 'go_id': g.get('go_id', '')}
-                for g in go_terms
-                if g.get('namespace') == 'molecular_function' or g.get('aspect') == 'F'
-            ]
-            molecular_functions = dedupe_go_terms(mf_list)
+                # Extract molecular functions with GO IDs
+                mf_list = [
+                    {'name': g.get('name', ''), 'go_id': g.get('go_id', '')}
+                    for g in go_terms
+                    if g.get('namespace') == 'molecular_function' or g.get('aspect') == 'F'
+                ]
+                molecular_functions = dedupe_go_terms(mf_list)
 
-            # Extract biological processes with GO IDs
-            bp_list = [
-                {'name': g.get('name', ''), 'go_id': g.get('go_id', '')}
-                for g in go_terms
-                if g.get('namespace') == 'biological_process' or g.get('aspect') == 'P'
-            ]
-            biological_processes = dedupe_go_terms(bp_list)
+                # Extract biological processes with GO IDs
+                bp_list = [
+                    {'name': g.get('name', ''), 'go_id': g.get('go_id', '')}
+                    for g in go_terms
+                    if g.get('namespace') == 'biological_process' or g.get('aspect') == 'P'
+                ]
+                biological_processes = dedupe_go_terms(bp_list)
 
-            # Extract cellular components with GO IDs
-            cc_list = [
-                {'name': g.get('name', ''), 'go_id': g.get('go_id', '')}
-                for g in go_terms
-                if g.get('namespace') == 'cellular_component' or g.get('aspect') == 'C'
-            ]
-            cellular_components = dedupe_go_terms(cc_list)
+                # Extract cellular components with GO IDs
+                cc_list = [
+                    {'name': g.get('name', ''), 'go_id': g.get('go_id', '')}
+                    for g in go_terms
+                    if g.get('namespace') == 'cellular_component' or g.get('aspect') == 'C'
+                ]
+                cellular_components = dedupe_go_terms(cc_list)
 
-            # Extract expression data
-            expression_data = [
-                {
-                    "tissue": expr.get('tissue', 'Unknown'),
-                    "tpm": float(
-                        expr.get('tpm_value', expr.get('level', expr.get('tpm', 0.0)))
-                    )
+                # Extract expression data
+                expression_data = [
+                    {
+                        "tissue": expr.get('tissue', 'Unknown'),
+                        "tpm": float(
+                            expr.get('tpm_value', expr.get('level', expr.get('tpm', 0.0)))
+                        )
+                    }
+                    for expr in profile.get('expression', [])
+                ]
+
+                # Extract interactions
+                interactions = [
+                    {
+                        "partner": inter.get('partner_symbol') or inter.get('partner', 'Unknown'),
+                        "score": float(inter.get('score', inter.get('combined_score', 0))) / 1000.0,
+                        "description": inter.get('partner_annotation', inter.get('description', ''))
+                    }
+                    for inter in profile.get('interactions', [])
+                ]
+
+                # Determine mapping type
+                mapping_type = "direct"
+                mapping_note = None
+                if gene != official_symbol:
+                    if lookup_result.get('lookup_tier') == 'alias':
+                        mapping_type = "alias"
+                        mapping_note = f"original: {gene}"
+                    else:
+                        mapping_type = "corrected"
+                        mapping_note = f"from {gene} to {official_symbol}"
+
+                # Create GeneProfile (factual data only at this stage)
+                gene_profile = GeneProfile(
+                    gene_symbol=official_symbol,
+                    gene_id=ensembl_id,
+                    location=f"{profile.get('chromosome', profile.get('chrom', 'Unknown'))}:"
+                            f"{profile.get('start', '?')}-{profile.get('end', '?')}",
+                    gene_type=profile.get('gene_type', 'Unknown'),
+                    full_name=clean_gene_name(profile.get('description')) or official_symbol,
+                    long_description=profile.get('long_description'),
+                    search_term=gene,
+                    mapping_type=mapping_type,
+                    mapping_note=mapping_note,
+                    molecular_functions=molecular_functions,
+                    biological_processes=biological_processes,
+                    cellular_components=cellular_components,
+                    expression_data=expression_data,
+                    interactions=interactions,
+                    # Interpreted fields remain None - filled later by InterpretAllGenes
+                )
+
+                conn.close()
+
+                print(f"✓ Fetched data for {gene}")
+
+                # Return all data needed to update state
+                return {
+                    'gene': gene,
+                    'official_symbol': official_symbol,
+                    'ensembl_id': ensembl_id,
+                    'lookup_result': lookup_result,
+                    'profile': profile,
+                    'gene_profile': gene_profile,
+                    'data_source_info': data_source_info,
+                    'error': None
                 }
-                for expr in profile.get('expression', [])
-            ]
 
-            # Extract interactions
-            interactions = [
-                {
-                    "partner": inter.get('partner_symbol') or inter.get('partner', 'Unknown'),
-                    "score": float(inter.get('score', inter.get('combined_score', 0))) / 1000.0,
-                    "description": inter.get('partner_annotation', inter.get('description', ''))
+            except Exception as e:
+                print(f"✗ ERROR fetching {gene}: {str(e)}")
+                import traceback
+                traceback.print_exc()
+                return {
+                    'gene': gene,
+                    'official_symbol': None,
+                    'error': str(e)
                 }
-                for inter in profile.get('interactions', [])
-            ]
 
-            # Determine mapping type
-            mapping_type = "direct"
-            mapping_note = None
-            if gene != official_symbol:
-                if lookup_result.get('lookup_tier') == 'alias':
-                    mapping_type = "alias"
-                    mapping_note = f"original: {gene}"
-                else:
-                    mapping_type = "corrected"
-                    mapping_note = f"from {gene} to {official_symbol}"
+        # Fetch all genes concurrently
+        results = await asyncio.gather(*[
+            fetch_single_gene(gene, ctx.state.db_path)
+            for gene in genes_to_fetch
+        ])
 
-            # Create GeneProfile (factual data only at this stage)
-            gene_profile = GeneProfile(
-                gene_symbol=official_symbol,
-                gene_id=ensembl_id,
-                location=f"{profile.get('chromosome', profile.get('chrom', 'Unknown'))}:"
-                        f"{profile.get('start', '?')}-{profile.get('end', '?')}",
-                gene_type=profile.get('gene_type', 'Unknown'),
-                full_name=clean_gene_name(profile.get('description')) or official_symbol,
-                long_description=profile.get('long_description'),
-                search_term=gene,
-                mapping_type=mapping_type,
-                mapping_note=mapping_note,
-                molecular_functions=molecular_functions,
-                biological_processes=biological_processes,
-                cellular_components=cellular_components,
-                expression_data=expression_data,
-                interactions=interactions,
-                # Interpreted fields remain None - filled later by InterpretAllGenes
-            )
+        # Process results - match by official_symbol
+        successful_genes = 0
+        failed_genes = 0
 
-            # Store in state
-            ctx.state.gene_profiles[official_symbol] = gene_profile
+        for result in results:
+            if result is None:
+                failed_genes += 1
+                continue
 
-            execution_time = time.time() - start_time
+            gene = result['gene']
+            official_symbol = result.get('official_symbol')
 
-            print(f"✓ Fetched data for {gene}")
-            print(f"  Total genes accumulated: {len(ctx.state.all_gene_data)}")
-            print(f"  Execution time: {execution_time:.2f}s")
+            # Store lookup result
+            if 'lookup_result' in result:
+                ctx.state.gene_mapping[gene] = result['lookup_result']
 
-            ctx.state.log_node_execution('fetch_gene_data', execution_time)
+            # Handle errors
+            if result.get('error'):
+                failed_genes += 1
+                continue
 
-            conn.close()
+            # Store successful results using official_symbol as key
+            if official_symbol:
+                ctx.state.all_gene_data[official_symbol] = result['profile']
+                ctx.state.gene_profiles[official_symbol] = result['gene_profile']
 
-            return FetchAllGeneData()
+                # Track alias mapping if input differs from official symbol
+                if gene != official_symbol:
+                    ctx.state.gene_alias_map[gene] = official_symbol
 
-        except Exception as e:
-            ctx.state.error = f"Failed to fetch {gene}: {str(e)}"
-            print(f"✗ ERROR: {ctx.state.error}")
-            import traceback
-            traceback.print_exc()
-            # Skip this gene and try next one
-            return FetchAllGeneData()
+                # Track data source
+                ctx.state.add_data_source(
+                    gene=gene,
+                    source_type='gene_profile',
+                    source_info=result['data_source_info']
+                )
+
+                successful_genes += 1
+
+        # Clear the processing queue
+        ctx.state.genes_to_process = []
+
+        execution_time = time.time() - start_time
+
+        print(f"\n✓ Fetched data for all genes concurrently")
+        print(f"  Successful: {successful_genes}")
+        print(f"  Failed: {failed_genes}")
+        print(f"  Total genes accumulated: {len(ctx.state.all_gene_data)}")
+        print(f"  Execution time: {execution_time:.2f}s")
+
+        ctx.state.log_node_execution('fetch_gene_data', execution_time)
+        ctx.state.factual_data_complete = True
+
+        return AnalyzeNetworkOverlap()
