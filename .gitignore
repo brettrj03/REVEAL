@@ -108,3 +108,4 @@ results/
 src/database/gene_database.sqlite
 src/database/data/
 pipeline_logs/
+saved_runs/
