@@ -512,12 +512,22 @@ def render_executive_summary(state: Dict[str, Any]):
                 unsafe_allow_html=True
             )
             if cc_terms:
-                # Render all terms in scrollable container
-                all_terms_html = ''.join(_render_go_term(t) for t in cc_terms)
+                # Show top 15 terms by default
+                top_terms = cc_terms[:15]
+                top_terms_html = ''.join(_render_go_term(t) for t in top_terms)
                 st.markdown(
-                    f'<div style="background:#fff; padding:4px 12px; overflow-y:auto; max-height:400px;">{all_terms_html}</div>',
+                    f'<div style="background:#fff; padding:4px 12px; overflow-y:auto; max-height:400px;">{top_terms_html}</div>',
                     unsafe_allow_html=True
                 )
+                # Show remaining terms in expander if more than 15
+                if len(cc_terms) > 15:
+                    with st.expander(f"Show all {cc_count} terms"):
+                        remaining_terms = cc_terms[15:]
+                        remaining_html = ''.join(_render_go_term(t) for t in remaining_terms)
+                        st.markdown(
+                            f'<div style="background:#fff; padding:4px 12px; overflow-y:auto; max-height:400px;">{remaining_html}</div>',
+                            unsafe_allow_html=True
+                        )
             else:
                 st.markdown(
                     '<div style="background:#fff; padding:12px; color:#9ca3af; font-style:italic; font-size:0.85rem;">No shared cellular components</div>',
@@ -535,12 +545,22 @@ def render_executive_summary(state: Dict[str, Any]):
                 unsafe_allow_html=True
             )
             if bp_terms:
-                # Render all terms in scrollable container
-                all_terms_html = ''.join(_render_go_term(t) for t in bp_terms)
+                # Show top 15 terms by default
+                top_terms = bp_terms[:15]
+                top_terms_html = ''.join(_render_go_term(t) for t in top_terms)
                 st.markdown(
-                    f'<div style="background:#fff; padding:4px 12px; overflow-y:auto; max-height:400px;">{all_terms_html}</div>',
+                    f'<div style="background:#fff; padding:4px 12px; overflow-y:auto; max-height:400px;">{top_terms_html}</div>',
                     unsafe_allow_html=True
                 )
+                # Show remaining terms in expander if more than 15
+                if len(bp_terms) > 15:
+                    with st.expander(f"Show all {bp_count} terms"):
+                        remaining_terms = bp_terms[15:]
+                        remaining_html = ''.join(_render_go_term(t) for t in remaining_terms)
+                        st.markdown(
+                            f'<div style="background:#fff; padding:4px 12px; overflow-y:auto; max-height:400px;">{remaining_html}</div>',
+                            unsafe_allow_html=True
+                        )
             else:
                 st.markdown(
                     '<div style="background:#fff; padding:12px; color:#9ca3af; font-style:italic; font-size:0.85rem;">No shared biological processes</div>',
@@ -558,12 +578,22 @@ def render_executive_summary(state: Dict[str, Any]):
                 unsafe_allow_html=True
             )
             if mf_terms:
-                # Render all terms in scrollable container
-                all_terms_html = ''.join(_render_go_term(t) for t in mf_terms)
+                # Show top 15 terms by default
+                top_terms = mf_terms[:15]
+                top_terms_html = ''.join(_render_go_term(t) for t in top_terms)
                 st.markdown(
-                    f'<div style="background:#fff; padding:4px 12px; overflow-y:auto; max-height:400px;">{all_terms_html}</div>',
+                    f'<div style="background:#fff; padding:4px 12px; overflow-y:auto; max-height:400px;">{top_terms_html}</div>',
                     unsafe_allow_html=True
                 )
+                # Show remaining terms in expander if more than 15
+                if len(mf_terms) > 15:
+                    with st.expander(f"Show all {mf_count} terms"):
+                        remaining_terms = mf_terms[15:]
+                        remaining_html = ''.join(_render_go_term(t) for t in remaining_terms)
+                        st.markdown(
+                            f'<div style="background:#fff; padding:4px 12px; overflow-y:auto; max-height:400px;">{remaining_html}</div>',
+                            unsafe_allow_html=True
+                        )
             else:
                 st.markdown(
                     '<div style="background:#fff; padding:12px; color:#9ca3af; font-style:italic; font-size:0.85rem;">No shared molecular functions</div>',

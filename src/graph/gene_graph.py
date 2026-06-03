@@ -320,8 +320,53 @@ async def run_stateful_pipeline(
 
     print(f"{'='*70}\n")
 
-    # Write pipeline log
+    # Write completion summary to file
     run_dir = Path(persistence_dir) if persistence_dir else Path('results/stateful_pipeline')
+    if not run_dir.exists():
+        run_dir.mkdir(parents=True, exist_ok=True)
+
+    summary_lines = []
+    summary_lines.append("=" * 70)
+    summary_lines.append("📊 PIPELINE COMPLETE")
+    summary_lines.append("=" * 70)
+    summary_lines.append(f"Genes processed: {len(result.state.all_gene_data)}")
+    summary_lines.append(f"Interpretations: {len(result.state.gene_interpretations)}")
+    summary_lines.append(f"Nodes executed: {len(result.state.nodes_executed)}")
+    summary_lines.append("")
+
+    if result.state.execution_times:
+        summary_lines.append("=" * 70)
+        summary_lines.append("EXECUTION TIMES")
+        summary_lines.append("=" * 70)
+        for node, exec_time in sorted(result.state.execution_times.items()):
+            if node == "__total__":
+                continue
+            summary_lines.append(f"  {node:<40} {exec_time:.3f}s")
+        total = result.state.execution_times.get("__total__", "not tracked")
+        summary_lines.append(f"  {'TOTAL (wall clock)':<40} {total}")
+        summary_lines.append("")
+
+    if result.state.token_usage:
+        summary_lines.append("=" * 70)
+        summary_lines.append("TOKEN USAGE")
+        summary_lines.append("=" * 70)
+        grand = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
+        for node, usage in sorted(result.state.token_usage.items()):
+            prompt = usage.get('prompt_tokens', 0)
+            completion = usage.get('completion_tokens', 0)
+            summary_lines.append(f"  {node:<40} {prompt} in / {completion} out")
+            for key in grand:
+                grand[key] += usage.get(key, 0)
+        summary_lines.append(f"  {'TOTAL':<40} {grand['prompt_tokens']} in / {grand['completion_tokens']} out / {grand['total_tokens']} total")
+        summary_lines.append("")
+
+    summary_lines.append("=" * 70)
+
+    summary_path = run_dir / 'completion_summary.txt'
+    with open(summary_path, 'w') as f:
+        f.write('\n'.join(summary_lines))
+
+    # Write pipeline log
     if not run_dir.exists():
         run_dir.mkdir(parents=True, exist_ok=True)
     log_path = run_dir / 'pipeline.log'

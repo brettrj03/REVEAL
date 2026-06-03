@@ -7,6 +7,8 @@ import json
 import asyncio
 import hashlib
 import re
+import os
+import tempfile
 from pathlib import Path
 from typing import Optional, Dict, Any
 from datetime import datetime
@@ -55,13 +57,73 @@ def get_available_runs() -> list:
     return runs
 
 
+def get_saved_runs() -> list:
+    """Get list of permanently saved pipeline runs.
+
+    Returns:
+        List of dicts with 'display_name', 'genes', 'date', 'path'
+    """
+    saved_runs_dir = Path(os.path.expanduser("~/Desktop/REVEAL-backup_2/saved_runs"))
+    if not saved_runs_dir.exists():
+        return []
+
+    runs = []
+    for file_path in sorted(saved_runs_dir.glob("*.json"), reverse=True):
+        filename = file_path.stem  # filename without .json extension
+
+        # Try to parse filename format: GENE1_GENE2_YYYY-MM-DD_HH-MM-SS
+        # or: run_YYYY-MM-DD_HH-MM-SS
+        parts = filename.split('_')
+
+        # Extract date and time (last 3 parts: YYYY-MM-DD, HH-MM-SS)
+        if len(parts) >= 3:
+            try:
+                date_str = parts[-2]  # YYYY-MM-DD
+                time_str = parts[-1]  # HH-MM-SS
+                datetime_str = f"{date_str} {time_str.replace('-', ':')}"
+
+                # Extract gene names (everything before the date)
+                gene_parts = parts[:-2]
+                if gene_parts and gene_parts[0] != 'run':
+                    genes = ', '.join(gene_parts)
+                    display_name = f"{genes} ({date_str})"
+                else:
+                    genes = "Unknown"
+                    display_name = f"Run {date_str} {time_str}"
+
+                runs.append({
+                    'display_name': display_name,
+                    'genes': genes,
+                    'date': date_str,
+                    'path': str(file_path)
+                })
+            except Exception:
+                # If parsing fails, just use filename
+                runs.append({
+                    'display_name': filename,
+                    'genes': 'Unknown',
+                    'date': 'Unknown',
+                    'path': str(file_path)
+                })
+        else:
+            # Fallback for unexpected format
+            runs.append({
+                'display_name': filename,
+                'genes': 'Unknown',
+                'date': 'Unknown',
+                'path': str(file_path)
+            })
+
+    return runs
+
+
 def dataclass_to_dict(obj) -> Dict[str, Any]:
     """Convert a dataclass to a dict, handling nested Pydantic models and dataclasses."""
 
     def convert_value(value):
         """Recursively convert a value to a JSON-serializable format."""
         if isinstance(value, BaseModel):
-            return value.model_dump()
+            return value.model_dump(mode='json')
         elif is_dataclass(value) and not isinstance(value, type):
             return dataclass_to_dict(value)
         elif isinstance(value, dict):
@@ -78,7 +140,7 @@ def dataclass_to_dict(obj) -> Dict[str, Any]:
             result[f.name] = convert_value(value)
         return result
     elif isinstance(obj, BaseModel):
-        return obj.model_dump()
+        return obj.model_dump(mode='json')
     elif hasattr(obj, '__dict__'):
         return obj.__dict__
     else:
@@ -405,30 +467,30 @@ def render_sidebar():
 
         st.markdown("---")
 
-        # Load existing state
-        st.markdown("#### Load Previous Results")
+        # Load saved runs
+        st.markdown("#### Previous Runs")
+        st.caption("Load a previously saved analysis")
 
-        available_runs = get_available_runs()
+        saved_runs = get_saved_runs()
 
-        if available_runs:
-            run_options = ["Select a run..."] + [r['name'] for r in available_runs]
+        if saved_runs:
+            run_options = ["Select a run..."] + [r['display_name'] for r in saved_runs]
             selected_run = st.selectbox(
-                "Select from previous runs",
+                "Select from saved runs",
                 options=run_options,
                 label_visibility="collapsed",
-                key="run_selector"
+                key="saved_run_selector"
             )
 
             if selected_run != "Select a run...":
-                run_info = next((r for r in available_runs if r['name'] == selected_run), None)
+                run_info = next((r for r in saved_runs if r['display_name'] == selected_run), None)
                 if run_info and st.button("Load Selected Run", width='stretch'):
-                    state = load_state_file(run_info['path'])
-                    if state:
-                        st.session_state['pipeline_state'] = state
-                        st.session_state['status'] = 'Complete'
-                        st.rerun()
+                    # Point pipeline_state_path to the saved run file
+                    st.session_state['pipeline_state_path'] = run_info['path']
+                    st.session_state['status'] = 'Complete'
+                    st.rerun()
         else:
-            st.info("No previous runs found")
+            st.info("No saved runs found")
 
         # Status display
         st.markdown("---")
